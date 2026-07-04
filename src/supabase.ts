@@ -1,9 +1,9 @@
-import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js'
-import { assertSupabaseConfigured, env } from './env'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { jwtVerify } from 'jose'
+import { assertJwtConfigured, assertSupabaseConfigured, env } from './env'
 
-// Clients are created lazily so the process can boot without credentials (see env.ts).
+// Created lazily so the process can boot without credentials (see env.ts).
 let adminClient: SupabaseClient | null = null
-let anonClient: SupabaseClient | null = null
 
 /**
  * Service-role client: full database access, bypasses Row-Level Security.
@@ -17,21 +17,37 @@ export function db(): SupabaseClient {
   return adminClient
 }
 
-function anon(): SupabaseClient {
-  assertSupabaseConfigured()
-  anonClient ??= createClient(env.supabaseUrl, env.supabaseAnonKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
-  return anonClient
+export interface AuthedUser {
+  id: string
+  email: string | null
+}
+
+let jwtKey: Uint8Array | null = null
+function secretKey(): Uint8Array {
+  assertJwtConfigured()
+  jwtKey ??= new TextEncoder().encode(env.supabaseJwtSecret)
+  return jwtKey
 }
 
 /**
- * Validates a Supabase-issued access token by asking Supabase Auth to resolve it.
- * Works regardless of the project's JWT signing algorithm (HS256 or asymmetric keys),
- * so there is no JWT secret / JWKS to manage here. Returns the user, or null if invalid.
+ * Validates a Supabase access token **locally** with the project's JWT secret (HS256) — no
+ * round trip to Supabase per request. Enforces the `authenticated` audience so the anon and
+ * service keys (signed with the same secret) can't pass as users. Returns the user, or null
+ * if the token is invalid/expired.
+ *
+ * Trade-off: local verification can't observe server-side revocation, but Supabase access
+ * tokens are short-lived (~1h), which is the standard trade-off for skipping the round trip.
+ * If the project ever moves to asymmetric JWT signing keys, swap this for JWKS verification
+ * (`jose`'s `createRemoteJWKSet`).
  */
-export async function getUserFromToken(token: string): Promise<User | null> {
-  const { data, error } = await anon().auth.getUser(token)
-  if (error || !data.user) return null
-  return data.user
+export async function getUserFromToken(token: string): Promise<AuthedUser | null> {
+  const key = secretKey() // throws on misconfig → surfaced as a 500 by the auth middleware
+  try {
+    const { payload } = await jwtVerify(token, key, { audience: 'authenticated' })
+    if (typeof payload.sub !== 'string') return null
+    const email = typeof payload.email === 'string' ? payload.email : null
+    return { id: payload.sub, email }
+  } catch {
+    return null
+  }
 }

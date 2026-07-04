@@ -4,8 +4,9 @@ The cucu API. Verifies Supabase-issued auth tokens and owns the data. Deployed o
 
 - **Stack:** Node.js + TypeScript + Express, run with `tsx` (no build step).
 - **Auth model:** Supabase Auth issues the session JWT (Apple / Google). The app sends it as
-  `Authorization: Bearer <jwt>`; this server validates it via `supabase.auth.getUser()` and
-  reads/writes Postgres with the service-role key.
+  `Authorization: Bearer <jwt>`; this server verifies it **locally** with the project's JWT
+  secret (`jose`, HS256 — no per-request round trip to Supabase) and reads/writes Postgres with
+  the service-role key.
 
 ## Endpoints
 
@@ -38,7 +39,7 @@ Get a token for manual testing from the app (log it after sign-in) or the Supaba
 ## Deploy to Railway
 
 1. New project → Deploy from this repo → set **Root Directory** to `server`.
-2. Add variables: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
+2. Add variables: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`.
    (`PORT` is injected by Railway.)
 3. Deploy. Nixpacks runs `npm install` then `npm start`.
 4. Copy the public URL into the iOS app's `API_BASE_URL` (see `Secrets.xcconfig`).
