@@ -2,6 +2,7 @@ import cors from 'cors'
 import express from 'express'
 import { env } from './env'
 import { meRouter } from './routes/me'
+import { profileRouter } from './routes/profile'
 
 const app = express()
 
@@ -14,6 +15,7 @@ app.get('/health', (_req, res) => {
 })
 
 app.use(meRouter)
+app.use(profileRouter)
 
 app.listen(env.port, () => {
   // eslint-disable-next-line no-console

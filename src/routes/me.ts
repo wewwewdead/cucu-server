@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { requireAuth, type AuthedRequest } from '../middleware/auth'
+import { toProfileResponse, type ProfileRow } from '../profileResponse'
 import { db } from '../supabase'
 
 export const meRouter = Router()
@@ -27,7 +28,7 @@ meRouter.get('/me', requireAuth, async (req: AuthedRequest, res) => {
 
     const { data, error } = await db()
       .from('profiles')
-      .select('id, onboarded')
+      .select('id, username, display_name, bio, avatar_url, onboarded')
       .eq('id', id)
       .single()
     if (error) {
@@ -35,11 +36,7 @@ meRouter.get('/me', requireAuth, async (req: AuthedRequest, res) => {
       return
     }
 
-    res.json({
-      id,
-      email: req.userEmail ?? null,
-      hasProfile: data?.onboarded ?? false,
-    })
+    res.json(toProfileResponse(id, req.userEmail ?? null, data as ProfileRow))
   } catch (error) {
     res.status(500).json({
       error: 'me_failed',
