@@ -9,9 +9,48 @@ export const repliesRouter = Router()
 // Pin the author embed to the FK (see the posts embed lesson — `replies` also links posts↔profiles,
 // so un-hinted embeds get ambiguous).
 const REPLY_COLUMNS =
-  'id, post_id, parent_id, body, created_at, author:profiles!replies_author_id_fkey(username, display_name, avatar_url)'
+  'id, post_id, parent_id, body, created_at, like_count, author:profiles!replies_author_id_fkey(username, display_name, avatar_url)'
 
 const THREAD_LIMIT = 500
+
+/** Shapes reply rows, resolving `likedByMe` for the caller in one extra query per thread page. */
+async function withReplyLikeState(rows: ReplyRow[], userId: string) {
+  if (rows.length === 0) return []
+  const ids = rows.map((row) => row.id)
+  const { data, error } = await db()
+    .from('reply_likes')
+    .select('reply_id')
+    .eq('user_id', userId)
+    .in('reply_id', ids)
+  if (error) throw new Error(error.message)
+  const liked = new Set((data as { reply_id: string }[]).map((like) => like.reply_id))
+  return rows.map((row) => toReplyResponse(row, liked.has(row.id)))
+}
+
+/** The fresh like state of one reply for one caller — the like/unlike routes' return value. */
+async function replyLikeState(replyId: string, userId: string) {
+  const { data: reply, error: replyError } = await db()
+    .from('replies')
+    .select('like_count')
+    .eq('id', replyId)
+    .maybeSingle()
+  if (replyError) throw new Error(replyError.message)
+  if (!reply) return null
+
+  const { data: like, error: likeError } = await db()
+    .from('reply_likes')
+    .select('reply_id')
+    .eq('reply_id', replyId)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (likeError) throw new Error(likeError.message)
+
+  return {
+    id: replyId,
+    likeCount: (reply as { like_count: number }).like_count ?? 0,
+    likedByMe: like != null,
+  }
+}
 
 /**
  * GET /posts/:id/replies — every reply in a post's thread, oldest-first (the client assembles the
@@ -30,7 +69,7 @@ repliesRouter.get('/posts/:id/replies', requireAuth, async (req: AuthedRequest, 
       res.status(500).json({ error: 'replies_list_failed', detail: error.message })
       return
     }
-    res.json({ replies: (data as unknown as ReplyRow[]).map(toReplyResponse) })
+    res.json({ replies: await withReplyLikeState(data as unknown as ReplyRow[], req.userId!) })
   } catch (error) {
     res.status(500).json({ error: 'replies_list_failed', detail: messageOf(error) })
   }
@@ -107,9 +146,67 @@ repliesRouter.post('/posts/:id/replies', requireAuth, async (req: AuthedRequest,
       res.status(500).json({ error: 'reply_create_failed', detail: error.message })
       return
     }
-    res.status(201).json(toReplyResponse(data as unknown as ReplyRow))
+    res.status(201).json(toReplyResponse(data as unknown as ReplyRow, false))
   } catch (error) {
     res.status(500).json({ error: 'reply_create_failed', detail: messageOf(error) })
+  }
+})
+
+/**
+ * POST /replies/:id/like — likes a reply (idempotent). Returns `{ id, likeCount, likedByMe }`.
+ */
+repliesRouter.post('/replies/:id/like', requireAuth, async (req: AuthedRequest, res) => {
+  const userId = req.userId!
+  const replyId = req.params.id ?? ''
+
+  try {
+    const { error } = await db()
+      .from('reply_likes')
+      .upsert({ reply_id: replyId, user_id: userId }, { onConflict: 'reply_id,user_id', ignoreDuplicates: true })
+    if (error) {
+      if (error.code === '23503') {
+        res.status(404).json({ error: 'reply_not_found' })
+        return
+      }
+      res.status(500).json({ error: 'like_failed', detail: error.message })
+      return
+    }
+    const state = await replyLikeState(replyId, userId)
+    if (!state) {
+      res.status(404).json({ error: 'reply_not_found' })
+      return
+    }
+    res.json(state)
+  } catch (error) {
+    res.status(500).json({ error: 'like_failed', detail: messageOf(error) })
+  }
+})
+
+/**
+ * DELETE /replies/:id/like — removes the caller's like (idempotent). Returns the fresh like state.
+ */
+repliesRouter.delete('/replies/:id/like', requireAuth, async (req: AuthedRequest, res) => {
+  const userId = req.userId!
+  const replyId = req.params.id ?? ''
+
+  try {
+    const { error } = await db()
+      .from('reply_likes')
+      .delete()
+      .eq('reply_id', replyId)
+      .eq('user_id', userId)
+    if (error) {
+      res.status(500).json({ error: 'unlike_failed', detail: error.message })
+      return
+    }
+    const state = await replyLikeState(replyId, userId)
+    if (!state) {
+      res.status(404).json({ error: 'reply_not_found' })
+      return
+    }
+    res.json(state)
+  } catch (error) {
+    res.status(500).json({ error: 'unlike_failed', detail: messageOf(error) })
   }
 })
 

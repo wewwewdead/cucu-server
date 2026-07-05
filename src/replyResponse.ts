@@ -13,10 +13,12 @@ export interface ReplyRow {
   parent_id: string | null
   body: string
   created_at: string
+  like_count: number | null
   author: ReplyAuthorRow | ReplyAuthorRow[] | null
 }
 
-export function toReplyResponse(row: ReplyRow) {
+/** `likedByMe` is resolved per-caller by the route (from `reply_likes`) and passed in. */
+export function toReplyResponse(row: ReplyRow, likedByMe: boolean) {
   const author = Array.isArray(row.author) ? (row.author[0] ?? null) : row.author
   return {
     id: row.id,
@@ -24,6 +26,8 @@ export function toReplyResponse(row: ReplyRow) {
     parentId: row.parent_id,
     body: row.body,
     createdAt: new Date(row.created_at).toISOString(),
+    likeCount: row.like_count ?? 0,
+    likedByMe,
     author: {
       username: author?.username ?? null,
       displayName: author?.display_name ?? null,
