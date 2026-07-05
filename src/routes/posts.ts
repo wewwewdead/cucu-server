@@ -8,8 +8,11 @@ import { normalize as normalizeUsername } from '../username'
 export const postsRouter = Router()
 
 // Post row + the author's public identity + the denormalized like counter.
+// NB: pin the author embed to the `author_id` FK explicitly. Once `post_likes` (0005) linked
+// posts↔profiles a second way, an un-hinted `profiles(...)` embed became ambiguous → PostgREST 500
+// "more than one relationship was found for 'posts' and 'profiles'".
 const POST_COLUMNS =
-  'id, body, hashtags, created_at, like_count, author:profiles(username, display_name, avatar_url)'
+  'id, body, hashtags, created_at, like_count, author:profiles!posts_author_id_fkey(username, display_name, avatar_url)'
 
 const FEED_LIMIT = 50
 
