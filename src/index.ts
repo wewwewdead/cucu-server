@@ -4,6 +4,7 @@ import { env } from './env'
 import { meRouter } from './routes/me'
 import { postsRouter } from './routes/posts'
 import { profileRouter } from './routes/profile'
+import { spacesRouter } from './routes/spaces'
 
 const app = express()
 
@@ -18,6 +19,7 @@ app.get('/health', (_req, res) => {
 app.use(meRouter)
 app.use(profileRouter)
 app.use(postsRouter)
+app.use(spacesRouter)
 
 app.listen(env.port, () => {
   // eslint-disable-next-line no-console
