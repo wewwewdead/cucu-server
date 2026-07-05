@@ -12,7 +12,7 @@ export const postsRouter = Router()
 // posts↔profiles a second way, an un-hinted `profiles(...)` embed became ambiguous → PostgREST 500
 // "more than one relationship was found for 'posts' and 'profiles'".
 const POST_COLUMNS =
-  'id, body, hashtags, created_at, like_count, author:profiles!posts_author_id_fkey(username, display_name, avatar_url)'
+  'id, body, hashtags, created_at, like_count, reply_count, author:profiles!posts_author_id_fkey(username, display_name, avatar_url)'
 
 const FEED_LIMIT = 50
 

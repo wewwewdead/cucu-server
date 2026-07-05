@@ -12,6 +12,7 @@ export interface PostRow {
   hashtags: string[] | null
   created_at: string
   like_count: number | null
+  reply_count: number | null
   // PostgREST returns an embedded to-one relation as an object, but the generated types are
   // loose — guard for the array case defensively.
   author: PostAuthorRow | PostAuthorRow[] | null
@@ -29,6 +30,7 @@ export function toPostResponse(row: PostRow, likedByMe: boolean) {
     createdAt: new Date(row.created_at).toISOString(),
     likeCount: row.like_count ?? 0,
     likedByMe,
+    replyCount: row.reply_count ?? 0,
     author: {
       username: author?.username ?? null,
       displayName: author?.display_name ?? null,
