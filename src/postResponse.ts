@@ -11,12 +11,14 @@ export interface PostRow {
   body: string
   hashtags: string[] | null
   created_at: string
+  like_count: number | null
   // PostgREST returns an embedded to-one relation as an object, but the generated types are
   // loose — guard for the array case defensively.
   author: PostAuthorRow | PostAuthorRow[] | null
 }
 
-export function toPostResponse(row: PostRow) {
+/** `likedByMe` is resolved per-caller by the route (from `post_likes`) and passed in. */
+export function toPostResponse(row: PostRow, likedByMe: boolean) {
   const author = Array.isArray(row.author) ? (row.author[0] ?? null) : row.author
   return {
     id: row.id,
@@ -25,6 +27,8 @@ export function toPostResponse(row: PostRow) {
     // Normalize to a strict ISO-8601 string with millis + 'Z' so the client's date parser
     // has a single, predictable format to decode.
     createdAt: new Date(row.created_at).toISOString(),
+    likeCount: row.like_count ?? 0,
+    likedByMe,
     author: {
       username: author?.username ?? null,
       displayName: author?.display_name ?? null,
